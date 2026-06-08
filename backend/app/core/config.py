@@ -61,6 +61,8 @@ class Settings(BaseSettings):
     embedding_min_delay_seconds: float = 1.5
     embedding_max_retries: int = 12
     embedding_max_chunk_chars: int = 600
+    # Skip per-film user-history embedding API calls during import (uses zero vectors).
+    import_embed_user_history: bool = False
 
     chat_max_retries: int = 5
     chat_retry_base_delay_seconds: float = 2.0

@@ -9,6 +9,7 @@ import { LetterboxdExportGuide } from "@/components/import/LetterboxdExportGuide
 import { LetterboxdUploadDropzone } from "@/components/import/LetterboxdUploadDropzone";
 import { ImportProgressStepper } from "@/components/import/ImportProgressStepper";
 import { DemoDataButton } from "@/components/import/DemoDataButton";
+import { Button } from "@/components/ui/button";
 
 const STEPS = [
   { num: 1, title: "Export your data" },
@@ -24,13 +25,22 @@ export default function OnboardingImportPage() {
   const [job, setJob] = useState<ImportJob | null>(null);
 
   useEffect(() => {
-    if (!job || job.status === "complete" || job.status === "failed") return;
+    if (!job || job.status === "complete" || job.status === "failed" || job.status === "cancelled") {
+      return;
+    }
     const interval = setInterval(async () => {
-      const updated = await api.getImportJob(job.id);
-      setJob(updated);
-      if (updated.status === "complete") {
+      try {
+        const updated = await api.getImportJob(job.id);
+        setJob(updated);
+        if (updated.status === "complete") {
+          clearInterval(interval);
+          setTimeout(() => router.push("/analytics"), 1500);
+        }
+        if (updated.status === "failed" || updated.status === "cancelled") {
+          clearInterval(interval);
+        }
+      } catch {
         clearInterval(interval);
-        setTimeout(() => router.push("/analytics"), 1500);
       }
     }, 2000);
     return () => clearInterval(interval);
@@ -101,18 +111,36 @@ export default function OnboardingImportPage() {
                 : "All set! Redirecting to analytics..."}
             </p>
           )}
-          {job.error && (
-            <>
-              <p className="text-red-400 text-sm">{job.error}</p>
+          {job.status !== "complete" && job.status !== "failed" && job.status !== "cancelled" && (
+            <div className="space-y-3 pt-2">
+              <p className="text-xs text-muted-foreground">
+                Taking too long? Cancel and use sample data instead.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    const updated = await api.cancelImportJob(job.id);
+                    setJob(updated);
+                  }}
+                >
+                  Cancel import
+                </Button>
+              </div>
               <DemoDataButton
                 onLoad={async () => {
                   const newJob = await api.loadDemoData();
                   setJob(newJob);
+                  setStep(3);
                   await refreshUser();
                   setTimeout(() => router.push("/analytics"), 1500);
                 }}
               />
-            </>
+            </div>
+          )}
+          {(job.error || job.status === "cancelled") && job.status !== "complete" && (
+            <p className="text-red-400 text-sm">{job.error || "Import cancelled."}</p>
           )}
         </div>
       )}

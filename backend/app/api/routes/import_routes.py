@@ -80,8 +80,26 @@ async def load_demo_data(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """Load sample watch history without embedding API calls."""
+    import_svc = ImportService(db)
+    await import_svc.cancel_active_jobs(user.id)
+
     svc = DemoDataService(db)
     job = await svc.load_for_user(user)
+    await db.commit()
+    await db.refresh(job)
+    return ImportJobResponse.model_validate(job)
+
+
+@router.post("/jobs/{job_id}/cancel", response_model=ImportJobResponse)
+async def cancel_import_job(
+    job_id: int,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    svc = ImportService(db)
+    job = await svc.cancel_job(user.id, job_id)
+    if not job:
+        raise HTTPException(404, "Job not found")
     await db.commit()
     await db.refresh(job)
     return ImportJobResponse.model_validate(job)
