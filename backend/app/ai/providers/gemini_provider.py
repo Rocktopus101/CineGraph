@@ -61,7 +61,13 @@ class GeminiProvider(LLMProvider):
             task_type="RETRIEVAL_DOCUMENT",
         )
 
-    async def _call_embed(self, contents: str | list[str]) -> list[list[float]]:
+    async def _call_embed(
+        self,
+        contents: str | list[str],
+        *,
+        min_delay_seconds: float | None = None,
+        max_retries: int | None = None,
+    ) -> list[list[float]]:
         if not self._client:
             raise RuntimeError("Gemini provider not configured")
 
@@ -76,12 +82,20 @@ class GeminiProvider(LLMProvider):
         return await with_embedding_retry(
             _request,
             rpm_limit=self.settings.embedding_rpm_limit,
-            max_retries=self.settings.embedding_max_retries,
-            min_delay_seconds=self.settings.embedding_min_delay_seconds,
+            max_retries=max_retries or self.settings.embedding_max_retries,
+            min_delay_seconds=(
+                self.settings.embedding_min_delay_seconds
+                if min_delay_seconds is None
+                else min_delay_seconds
+            ),
         )
 
     async def embed_text(self, text: str) -> list[float]:
         vectors = await self._call_embed(text)
+        return vectors[0]
+
+    async def embed_query(self, text: str) -> list[float]:
+        vectors = await self._call_embed(text, min_delay_seconds=0.0, max_retries=2)
         return vectors[0]
 
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
@@ -257,10 +271,13 @@ class GeminiProvider(LLMProvider):
                     max_retries=self.settings.chat_max_retries,
                     base_delay_seconds=self.settings.chat_retry_base_delay_seconds,
                 ),
-                timeout=120.0,
+                timeout=self.settings.chat_llm_timeout_seconds,
             )
         except asyncio.TimeoutError:
-            logger.warning("Gemini chat timed out after 120s")
+            logger.warning(
+                "Gemini chat timed out after %.0fs",
+                self.settings.chat_llm_timeout_seconds,
+            )
             raise
         except Exception as exc:
             if is_transient_llm_error(exc):

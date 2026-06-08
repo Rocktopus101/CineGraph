@@ -48,7 +48,7 @@ class RetrievalService:
         limit: int = 10,
     ) -> list[RetrievedDoc]:
         filters = filters or {}
-        query_embedding = await self.embedder.embed_text(query)
+        query_embedding = await self.embedder.embed_query(query)
         emb_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
 
         user_docs = await self._search_user_content(user_id, emb_str, filters, limit)

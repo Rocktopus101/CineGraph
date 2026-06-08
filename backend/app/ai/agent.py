@@ -117,7 +117,7 @@ def _normalize_tool_name(name: str) -> str:
 
 
 class AgentService:
-    MAX_TOOL_CALLS = 8
+    MAX_TOOL_CALLS = 3
 
     def __init__(self, db: AsyncSession, obs: ObservabilityService):
         self.db = db

@@ -38,6 +38,23 @@ class EmbeddingService:
             return text
         return text[: limit - 3] + "..."
 
+    async def embed_query(self, text: str) -> list[float]:
+        """Lightweight embed for live chat retrieval (skips import pacing delays)."""
+        if not self.provider.is_available or self.provider.name == "local":
+            return _zero_embedding(self.embedding_dim)
+        embed_fn = getattr(self.provider, "embed_query", None)
+        try:
+            if embed_fn:
+                return await embed_fn(self._truncate(text))
+            return await self.provider.embed_text(self._truncate(text))
+        except Exception as exc:
+            logger.warning(
+                "%s query embed failed (%s); using zero-vector fallback",
+                self.provider.name,
+                exc,
+            )
+            return _zero_embedding(self.embedding_dim)
+
     async def embed_text(
         self, text: str, *, fallback_on_rate_limit: bool = False
     ) -> list[float]:
