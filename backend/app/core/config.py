@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     firebase_project_id: str = ""
     firebase_client_email: str = ""
     firebase_private_key: str = ""
+    # Preferred on Render: paste the full service-account JSON as one line.
+    firebase_service_account_json: str = ""
 
     dev_mode: bool = False
     dev_skip_onboarding: bool = False

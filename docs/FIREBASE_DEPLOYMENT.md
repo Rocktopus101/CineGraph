@@ -155,13 +155,15 @@ DEV_MODE=false
 LLM_PROVIDER=gemini
 GEMINI_API_KEY=your-key
 TMDB_API_KEY=your-key
-FIREBASE_PROJECT_ID=your-project-id
-FIREBASE_CLIENT_EMAIL=firebase-adminsdk@...
-FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+FIREBASE_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"..."}
 CORS_ORIGINS=https://your-frontend.vercel.app
 ```
 
-> For `FIREBASE_PRIVATE_KEY` on Render, paste the key with real newlines or use `\n` escapes.
+> **Render tip:** Prefer `FIREBASE_SERVICE_ACCOUNT_JSON` — paste the **entire** downloaded service-account JSON as a single line (minify it first). This avoids newline/PEM formatting issues with `FIREBASE_PRIVATE_KEY`.
+>
+> To minify locally: `cat service-account.json | jq -c .`
+>
+> Alternative: set `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, and `FIREBASE_PRIVATE_KEY` with literal `\n` between PEM lines (not real line breaks).
 
 5. Deploy. Note your Render URL (e.g. `https://cinegraph-api.onrender.com`).
 6. Free-tier Render services spin down after inactivity — first request after idle may take 30–60s.
@@ -367,7 +369,8 @@ docker compose down && docker compose up --build
 | `401 Not authenticated` | Ensure frontend sends `Authorization: Bearer <idToken>`. Check `DEV_MODE=false` on backend. |
 | CORS errors | Add your frontend URL to `CORS_ORIGINS` on the backend. |
 | `Firebase not configured` on login | Set all `NEXT_PUBLIC_FIREBASE_*` vars and `NEXT_PUBLIC_DEV_MODE=false`. |
-| Backend can't verify tokens | Check `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`. |
+| Backend can't verify tokens | Use `FIREBASE_SERVICE_ACCOUNT_JSON` (full JSON) on Render, or check `FIREBASE_PRIVATE_KEY` has `\n` escapes. |
+| `Failed to initialize a certificate credential` on Render | Paste full service-account JSON into `FIREBASE_SERVICE_ACCOUNT_JSON` instead of splitting the private key. |
 | Import hangs on embeddings | Normal on Gemini free tier; consider raising Cloud Run timeout to 300s. |
 
 ## Cost notes
