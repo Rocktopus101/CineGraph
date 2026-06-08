@@ -1,0 +1,66 @@
+# Cloud Run service template for the FastAPI backend.
+# Replace placeholders, then: gcloud run services replace deploy/cloudrun-service.yaml --region=us-central1
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: cinegraph-api
+  annotations:
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/maxScale: "10"
+        run.googleapis.com/cpu-throttling: "false"
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 300
+      containers:
+        - image: gcr.io/YOUR_PROJECT_ID/cinegraph-backend:latest
+          ports:
+            - containerPort: 8000
+          resources:
+            limits:
+              cpu: "2"
+              memory: 1Gi
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: cinegraph-database-url
+                  key: latest
+            - name: LLM_PROVIDER
+              value: gemini
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: gemini-api-key
+                  key: latest
+            - name: TMDB_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: tmdb-api-key
+                  key: latest
+            - name: FIREBASE_PROJECT_ID
+              value: your-project-id
+            - name: FIREBASE_CLIENT_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: firebase-client-email
+                  key: latest
+            - name: FIREBASE_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: firebase-private-key
+                  key: latest
+            - name: DEV_MODE
+              value: "false"
+            - name: CORS_ORIGINS
+              value: https://your-app--your-project-id.us-central1.hosted.app,https://your-project-id.web.app
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 6

@@ -1,0 +1,6 @@
+{
+  "apphosting": {
+    "backendId": "cinegraph-frontend",
+    "rootDir": "frontend"
+  }
+}
