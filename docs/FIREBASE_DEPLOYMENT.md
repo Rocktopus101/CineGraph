@@ -97,13 +97,13 @@ FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY----
 
 1. Sign up at [neon.tech](https://neon.tech) (free tier — no credit card for basic usage).
 2. **New project** → pick a region close to your backend (e.g. `us-east-2`).
-3. Copy the connection string from the dashboard. Convert it for CineGraph:
+3. Copy the connection string from the dashboard (Neon format is fine):
 
 ```
-postgresql+asyncpg://USER:PASSWORD@ep-xxxx.region.aws.neon.tech/neondb?ssl=require
+postgresql://USER:PASSWORD@ep-xxxx.region.aws.neon.tech/neondb?sslmode=require
 ```
 
-Replace `postgresql://` with `postgresql+asyncpg://` and append `?ssl=require` if not present.
+CineGraph auto-converts this to `postgresql+asyncpg://...?ssl=require` at runtime.
 
 4. Open **SQL Editor** in Neon and run:
 
@@ -150,7 +150,7 @@ postgresql+asyncpg://postgres.PROJECT:PASSWORD@aws-0-REGION.pooler.supabase.com:
 4. Set environment variables in the Render dashboard:
 
 ```env
-DATABASE_URL=postgresql+asyncpg://...@ep-xxxx.neon.tech/neondb?ssl=require
+DATABASE_URL=postgresql://...@ep-xxxx.neon.tech/neondb?sslmode=require
 DEV_MODE=false
 LLM_PROVIDER=gemini
 GEMINI_API_KEY=your-key
