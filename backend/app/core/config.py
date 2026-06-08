@@ -1,12 +1,29 @@
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def normalize_database_url(url: str) -> str:
+    """Accept standard Postgres URLs (e.g. from Neon) and coerce to asyncpg."""
+    if url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    elif url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+    return url.replace("sslmode=require", "ssl=require")
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     database_url: str = "postgresql+asyncpg://cinegraph:cinegraph@localhost:5432/cinegraph"
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def coerce_database_url(cls, value: str) -> str:
+        if isinstance(value, str):
+            return normalize_database_url(value)
+        return value
 
     # LLM provider: gemini (default) | openai | local
     llm_provider: str = "gemini"

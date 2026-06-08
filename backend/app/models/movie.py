@@ -6,7 +6,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.config import get_settings
-from app.core.database import Base
+from app.core.base import Base
 
 _EMBEDDING_DIM = get_settings().embedding_dim
 

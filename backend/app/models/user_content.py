@@ -3,7 +3,7 @@ from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.config import get_settings
-from app.core.database import Base
+from app.core.base import Base
 
 _EMBEDDING_DIM = get_settings().embedding_dim
 
