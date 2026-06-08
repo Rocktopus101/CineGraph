@@ -4,9 +4,11 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import type { ImportJob } from "@/lib/types";
+import { useAuth } from "@/lib/auth-context";
 import { LetterboxdExportGuide } from "@/components/import/LetterboxdExportGuide";
 import { LetterboxdUploadDropzone } from "@/components/import/LetterboxdUploadDropzone";
 import { ImportProgressStepper } from "@/components/import/ImportProgressStepper";
+import { DemoDataButton } from "@/components/import/DemoDataButton";
 
 const STEPS = [
   { num: 1, title: "Export your data" },
@@ -16,6 +18,7 @@ const STEPS = [
 
 export default function OnboardingImportPage() {
   const router = useRouter();
+  const { refreshUser } = useAuth();
   const [step, setStep] = useState(1);
   const [exportConfirmed, setExportConfirmed] = useState(false);
   const [job, setJob] = useState<ImportJob | null>(null);
@@ -64,24 +67,53 @@ export default function OnboardingImportPage() {
       )}
 
       {step === 2 && !job && (
-        <LetterboxdUploadDropzone
-          disabled={!exportConfirmed}
-          onUpload={async (file) => {
-            const newJob = await api.importLetterboxd(file);
-            setJob(newJob);
-            setStep(3);
-          }}
-        />
+        <div className="space-y-4">
+          <LetterboxdUploadDropzone
+            disabled={!exportConfirmed}
+            onUpload={async (file) => {
+              const newJob = await api.importLetterboxd(file);
+              setJob(newJob);
+              setStep(3);
+            }}
+          />
+          <DemoDataButton
+            onLoad={async () => {
+              const newJob = await api.loadDemoData();
+              setJob(newJob);
+              setStep(3);
+              await refreshUser();
+              setTimeout(() => router.push("/analytics"), 1500);
+            }}
+          />
+        </div>
       )}
 
       {step === 3 && job && (
         <div className="space-y-4">
-          <h2 className="text-lg font-semibold">Processing your data...</h2>
+          <h2 className="text-lg font-semibold">
+            {job.stats_json?.source === "demo" ? "Loading sample data..." : "Processing your data..."}
+          </h2>
           <ImportProgressStepper status={job.status} stats={job.stats_json} />
           {job.status === "complete" && (
-            <p className="text-primary text-sm">All set! Redirecting to analytics...</p>
+            <p className="text-primary text-sm">
+              {job.stats_json?.source === "demo"
+                ? "Sample data ready! Redirecting..."
+                : "All set! Redirecting to analytics..."}
+            </p>
           )}
-          {job.error && <p className="text-red-400 text-sm">{job.error}</p>}
+          {job.error && (
+            <>
+              <p className="text-red-400 text-sm">{job.error}</p>
+              <DemoDataButton
+                onLoad={async () => {
+                  const newJob = await api.loadDemoData();
+                  setJob(newJob);
+                  await refreshUser();
+                  setTimeout(() => router.push("/analytics"), 1500);
+                }}
+              />
+            </>
+          )}
         </div>
       )}
     </div>

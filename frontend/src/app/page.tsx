@@ -8,9 +8,10 @@ import { MovieGrid } from "@/components/movies/MovieGrid";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { isDevMode } from "@/lib/firebase";
+import { DemoDataButton } from "@/components/import/DemoDataButton";
 
 export default function HomePage() {
-  const { user, loading } = useAuth();
+  const { user, loading, refreshUser } = useAuth();
   const skipOnboarding = isDevMode && process.env.NEXT_PUBLIC_DEV_MODE === "true";
 
   const { data: history, isLoading } = useQuery({
@@ -30,9 +31,17 @@ export default function HomePage() {
         <p className="text-muted-foreground mb-8 max-w-md">
           Import your Letterboxd data to unlock personalized recommendations and taste analytics.
         </p>
-        <Link href="/onboarding/import">
-          <Button size="lg">Get Started</Button>
-        </Link>
+        <div className="flex flex-col items-center gap-4 w-full max-w-md">
+          <Link href="/onboarding/import">
+            <Button size="lg">Get Started</Button>
+          </Link>
+          <DemoDataButton
+            onLoad={async () => {
+              await api.loadDemoData();
+              await refreshUser();
+            }}
+          />
+        </div>
       </div>
     );
   }

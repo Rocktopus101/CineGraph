@@ -31,13 +31,17 @@ app = FastAPI(title="CineGraph API", version="0.1.0", lifespan=lifespan)
 _settings = get_settings()
 _cors_origins = [o.strip() for o in _settings.cors_origins.split(",") if o.strip()]
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+_cors_middleware_kwargs: dict = {
+    "allow_credentials": True,
+    "allow_methods": ["*"],
+    "allow_headers": ["*"],
+}
+if _cors_origins:
+    _cors_middleware_kwargs["allow_origins"] = _cors_origins
+if _settings.cors_origin_regex:
+    _cors_middleware_kwargs["allow_origin_regex"] = _settings.cors_origin_regex
+
+app.add_middleware(CORSMiddleware, **_cors_middleware_kwargs)
 
 app.include_router(auth.router)
 app.include_router(import_routes.router)

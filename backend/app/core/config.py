@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     firebase_project_id: str = ""
     firebase_client_email: str = ""
     firebase_private_key: str = ""
+    # Preferred on Render: paste the full service-account JSON as one line.
+    firebase_service_account_json: str = ""
 
     dev_mode: bool = False
     dev_skip_onboarding: bool = False
@@ -65,6 +67,8 @@ class Settings(BaseSettings):
 
     # Comma-separated origins for CORS (include production frontend URL)
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+    # Match Vercel preview deployments (e.g. cine-graph-xxx-vedaant-s-projects.vercel.app)
+    cors_origin_regex: str = r"https://.*\.vercel\.app"
 
 
 @lru_cache
