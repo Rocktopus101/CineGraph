@@ -134,24 +134,16 @@ CineGraph/
 
 ## Production Deployment (Firebase)
 
-CineGraph deploys to:
-
-- **Frontend**: Firebase App Hosting (Next.js)
-- **Auth**: Firebase Authentication (Email/Password)
-- **Backend**: Google Cloud Run (FastAPI Docker image)
-- **Database**: Cloud SQL PostgreSQL + pgvector
-
 See **[docs/FIREBASE_DEPLOYMENT.md](docs/FIREBASE_DEPLOYMENT.md)** for step-by-step setup.
 
-Quick checklist:
+**Path B (no Cloud SQL billing)** — recommended for personal projects:
 
-1. Create Firebase project + enable Email/Password auth
-2. Register web app → copy `NEXT_PUBLIC_FIREBASE_*` config
-3. Download service account key → set `FIREBASE_*` backend vars
-4. Provision Cloud SQL with pgvector
-5. Deploy backend: `GCP_PROJECT_ID=... ./scripts/deploy-backend.sh`
-6. Connect GitHub repo to Firebase App Hosting (root dir: `frontend`)
-7. Set `DEV_MODE=false`, `NEXT_PUBLIC_DEV_MODE=false`, and `CORS_ORIGINS` to your frontend URL
+1. Steps 1–4: Firebase project, Auth, web app config, service account
+2. **Neon** free-tier PostgreSQL + `CREATE EXTENSION vector`
+3. **Render** backend (`render.yaml` in repo root)
+4. **Vercel** frontend (root dir: `frontend`) + Firebase Auth client config
+
+**Path A (all GCP):** Cloud SQL + Cloud Run + Firebase App Hosting
 
 ## Development Notes
 
