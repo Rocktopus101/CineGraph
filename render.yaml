@@ -31,3 +31,5 @@ services:
         sync: false
       - key: CORS_ORIGIN_REGEX
         value: "https://.*\\.vercel\\.app"
+      - key: CHAT_USE_AGENT
+        value: "false"

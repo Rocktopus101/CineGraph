@@ -66,7 +66,7 @@ async function fetchApi<T>(
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
       throw new Error(
-        "Request timed out. Render may be waking up — wait 30 seconds and try again.",
+        "Request timed out. The backend may still be waking up — wait 30 seconds and try again.",
       );
     }
     if (error instanceof TypeError) {
@@ -103,10 +103,14 @@ export const api = {
   refreshTaste: () => fetchApi<TasteProfile>("/profile/taste/refresh", { method: "POST" }),
 
   chat: (message: string) =>
-    fetchApi<ChatResponse>("/recommendations/chat", {
-      method: "POST",
-      body: JSON.stringify({ message }),
-    }),
+    fetchApi<ChatResponse>(
+      "/recommendations/chat",
+      {
+        method: "POST",
+        body: JSON.stringify({ message }),
+      },
+      60_000,
+    ),
 
   getReviews: () => fetchApi<ReviewItem[]>("/reviews/feed"),
   getWatchlist: () => fetchApi<WatchlistItem[]>("/watchlist/"),

@@ -64,8 +64,12 @@ class Settings(BaseSettings):
     # Skip per-film user-history embedding API calls during import (uses zero vectors).
     import_embed_user_history: bool = False
 
-    chat_max_retries: int = 5
-    chat_retry_base_delay_seconds: float = 2.0
+    chat_max_retries: int = 2
+    chat_retry_base_delay_seconds: float = 1.5
+    # Agent tool loops exceed Render's ~30s free-tier limit; use single-pass chat by default.
+    chat_use_agent: bool = False
+    chat_request_timeout_seconds: float = 25.0
+    chat_llm_timeout_seconds: float = 20.0
 
     # Comma-separated origins for CORS (include production frontend URL)
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"

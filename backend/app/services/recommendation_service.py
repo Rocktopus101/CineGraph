@@ -122,6 +122,39 @@ class RecommendationService:
 
         return clean_text, citations
 
+    async def quick_fallback(self, user_id: int, query: str) -> tuple[str, list[Citation]]:
+        """Instant response when the full pipeline would exceed hosting timeouts."""
+        result = await self.db.execute(
+            select(UserMovie, Movie)
+            .join(Movie, UserMovie.movie_id == Movie.id)
+            .where(UserMovie.user_id == user_id, UserMovie.rating.isnot(None))
+            .order_by(UserMovie.rating.desc())
+            .limit(5)
+        )
+        history = result.all()
+        citations = [
+            Citation(
+                movie_id=m.id,
+                title=m.title,
+                rating=um.rating,
+                watched_date=str(um.watched_date) if um.watched_date else None,
+            )
+            for um, m in history[:3]
+        ]
+        if not history:
+            return (
+                "I couldn't finish a full analysis in time. Import or load sample data, then try again.",
+                [],
+            )
+        favorites = ", ".join(m.title for _, m in history[:3])
+        response = (
+            f"I ran out of time for a deep answer, but based on your highest-rated films "
+            f"({favorites}), try something in a similar vein for: {query}"
+        )
+        if self.obs:
+            await self.obs.log_event("recommendation_fallback", {"citations": [c.model_dump() for c in citations]})
+        return response, citations
+
     def _extract_citations(self, text: str, user_id: int) -> list[Citation]:
         match = re.search(r'\{["\']citations["\']\s*:\s*\[.*?\]\s*\}', text, re.DOTALL)
         if not match:
