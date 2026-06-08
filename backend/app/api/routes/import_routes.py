@@ -80,14 +80,19 @@ async def load_demo_data(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """Load sample watch history without embedding API calls."""
-    import_svc = ImportService(db)
-    await import_svc.cancel_active_jobs(user.id)
+    try:
+        import_svc = ImportService(db)
+        await import_svc.cancel_active_jobs(user.id)
 
-    svc = DemoDataService(db)
-    job = await svc.load_for_user(user)
-    await db.commit()
-    await db.refresh(job)
-    return ImportJobResponse.model_validate(job)
+        svc = DemoDataService(db)
+        job = await svc.load_for_user(user)
+        await db.commit()
+        await db.refresh(job)
+        return ImportJobResponse.model_validate(job)
+    except Exception as exc:
+        await db.rollback()
+        logger.exception("Demo data load failed for user %s", user.id)
+        raise HTTPException(500, f"Failed to load sample data: {exc}") from exc
 
 
 @router.post("/jobs/{job_id}/cancel", response_model=ImportJobResponse)

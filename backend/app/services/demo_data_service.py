@@ -77,10 +77,10 @@ class DemoDataService:
         base_date = date.today() - timedelta(days=365)
         for i, movie in enumerate(movies):
             result = await self.db.execute(
-                select(UserMovie).where(
+                select(UserMovie.id).where(
                     UserMovie.user_id == user_id,
                     UserMovie.movie_id == movie.id,
-                )
+                ).limit(1)
             )
             if result.scalar_one_or_none():
                 continue
