@@ -44,18 +44,21 @@ class ListGeneratorService:
         profile = await taste.get_profile(user_id)
         top_genres = (profile.insights_json or {}).get("top_genres", [])[:3] if profile else []
 
-        for genre_info in top_genres:
-            genre = genre_info["genre"]
+        if top_genres:
             result = await self.db.execute(
                 select(UserMovie, Movie)
                 .join(Movie, UserMovie.movie_id == Movie.id)
                 .where(UserMovie.user_id == user_id, UserMovie.rating.isnot(None))
             )
-            genre_movies = []
-            for um, movie in result.all():
-                genres = (movie.metadata_json or {}).get("genres", [])
-                if genre in genres:
-                    genre_movies.append((um, movie))
+            rated_rows = result.all()
+
+        for genre_info in top_genres:
+            genre = genre_info["genre"]
+            genre_movies = [
+                (um, movie)
+                for um, movie in rated_rows
+                if genre in (movie.metadata_json or {}).get("genres", [])
+            ]
             genre_movies.sort(key=lambda x: x[0].rating or 0, reverse=True)
             genre_movies = genre_movies[:15]
             if genre_movies:

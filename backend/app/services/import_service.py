@@ -16,6 +16,7 @@ from app.models.user_data import UserMovie, WatchlistItem
 from app.services.embedding_service import EmbeddingService
 from app.services.list_generator_service import ListGeneratorService
 from app.services.taste_profile_service import TasteProfileService
+from app.core.config import get_settings
 from app.services.tmdb_service import TmdbService
 
 logger = logging.getLogger(__name__)
@@ -190,22 +191,43 @@ class ImportService:
             )
             await self.db.commit()
 
-            async def on_user_embed(done: int, total: int) -> None:
-                await self.db.commit()
-                progress = 82 + int(8 * done / max(total, 1))
+            settings = get_settings()
+            await self._save_progress(
+                job,
+                status="embedding",
+                stage="embedding_history",
+                progress=82,
+                movies_embedded=movies_embedded,
+                movies_total=len(movie_id_list),
+            )
+
+            if settings.import_embed_user_history:
+                async def on_user_embed(done: int, total: int) -> None:
+                    await self.db.commit()
+                    progress = 82 + int(8 * done / max(total, 1))
+                    await self._save_progress(
+                        job,
+                        status="embedding",
+                        stage="embedding_history",
+                        progress=progress,
+                        user_embedded=done,
+                        user_total=total,
+                    )
+
+                user_embedded = await embedder.embed_user_history_for_import(
+                    user.id,
+                    on_progress=on_user_embed,
+                )
+            else:
+                user_embedded = await embedder.apply_zero_user_embeddings_for_import(user.id)
                 await self._save_progress(
                     job,
                     status="embedding",
-                    stage="embedding",
-                    progress=progress,
-                    user_embedded=done,
-                    user_total=total,
+                    stage="embedding_history",
+                    progress=90,
+                    user_embedded=user_embedded,
+                    user_skipped_api=True,
                 )
-
-            user_embedded = await embedder.embed_user_history_for_import(
-                user.id,
-                on_progress=on_user_embed,
-            )
             await self.db.commit()
 
             await self._save_progress(
