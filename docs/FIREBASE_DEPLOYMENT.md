@@ -1,8 +1,35 @@
 # Firebase Deployment Guide
 
-CineGraph uses **Firebase Auth** for users, **Firebase App Hosting** for the Next.js frontend, and **Google Cloud Run** for the FastAPI backend. PostgreSQL runs on **Cloud SQL** (with pgvector).
+CineGraph uses **Firebase Auth** for users, a hosted **Next.js frontend**, and a hosted **FastAPI backend**. PostgreSQL with **pgvector** stores movies, embeddings, and user data.
 
-## Architecture
+## Choose a deployment path
+
+| | **Path B — no Cloud SQL** (recommended if avoiding GCP DB billing) | **Path A — all GCP** |
+|---|---|---|
+| Database | [Neon](https://neon.tech) or [Supabase](https://supabase.com) free tier | Cloud SQL (~$10–30/mo) |
+| Backend | [Render](https://render.com) free tier | Cloud Run |
+| Frontend | Vercel free tier **or** Firebase App Hosting | Firebase App Hosting |
+| Firebase Auth | Steps 1–4 below (same) | Steps 1–4 below (same) |
+| GCP billing | Not required for DB; App Hosting still needs Blaze if you use it | Blaze plan for Run + App Hosting |
+
+> **You've completed steps 1–4.** Continue with **Path B, step 5** below to skip Cloud SQL entirely.
+
+### Path B architecture (no Cloud SQL)
+
+```
+Browser
+  │
+  ├─ Firebase Auth (sign-in / ID tokens)          ← Spark plan, free
+  │
+  ├─ Vercel or Firebase App Hosting ──► Next.js
+  │         │
+  │         └── NEXT_PUBLIC_API_URL ──► Render (FastAPI)
+  │                                        │
+  │                                        ├── Firebase Admin SDK (verify tokens)
+  │                                        └── Neon / Supabase PostgreSQL + pgvector
+```
+
+### Path A architecture (all GCP)
 
 ```
 Browser
@@ -61,6 +88,120 @@ FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY----
 ```
 
 > Keep the JSON file secure. Never commit it to git.
+
+---
+
+## Path B (recommended): Neon database — no GCP billing
+
+### 5B. Create a Neon PostgreSQL database
+
+1. Sign up at [neon.tech](https://neon.tech) (free tier — no credit card for basic usage).
+2. **New project** → pick a region close to your backend (e.g. `us-east-2`).
+3. Copy the connection string from the dashboard. Convert it for CineGraph:
+
+```
+postgresql+asyncpg://USER:PASSWORD@ep-xxxx.region.aws.neon.tech/neondb?ssl=require
+```
+
+Replace `postgresql://` with `postgresql+asyncpg://` and append `?ssl=require` if not present.
+
+4. Open **SQL Editor** in Neon and run:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+```
+
+5. Run Alembic migrations against Neon (from your machine or after backend is deployed):
+
+```bash
+cd backend
+DATABASE_URL="postgresql+asyncpg://USER:PASSWORD@ep-xxxx.region.aws.neon.tech/neondb?ssl=require" \
+  alembic upgrade head
+```
+
+6. (Optional) Seed sample data:
+
+```bash
+DATABASE_URL="postgresql+asyncpg://..." python ../scripts/seed.py
+```
+
+### 5B-alt. Supabase instead of Neon
+
+1. [supabase.com](https://supabase.com) → **New project** (free tier).
+2. **Project Settings → Database** → copy the **Connection string** (URI).
+3. Use the **Transaction pooler** URL (port `6543`) for serverless backends.
+4. Convert to asyncpg format:
+
+```
+postgresql+asyncpg://postgres.PROJECT:PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?ssl=require
+```
+
+5. In **SQL Editor**, run `CREATE EXTENSION IF NOT EXISTS vector;` (enabled by default on most projects).
+6. Run `alembic upgrade head` as above.
+
+### 6B. Deploy the backend to Render (free tier)
+
+1. Push your repo to GitHub (already done if you followed earlier steps).
+2. Go to [render.com](https://render.com) → **New → Blueprint** → connect `Rocktopus101/CineGraph`.
+3. Render reads `render.yaml` at the repo root. Or create a **Web Service** manually:
+   - **Root directory**: leave blank (uses `backend/` via Dockerfile path in blueprint)
+   - **Environment**: Docker
+   - **Dockerfile path**: `backend/Dockerfile`
+4. Set environment variables in the Render dashboard:
+
+```env
+DATABASE_URL=postgresql+asyncpg://...@ep-xxxx.neon.tech/neondb?ssl=require
+DEV_MODE=false
+LLM_PROVIDER=gemini
+GEMINI_API_KEY=your-key
+TMDB_API_KEY=your-key
+FIREBASE_PROJECT_ID=your-project-id
+FIREBASE_CLIENT_EMAIL=firebase-adminsdk@...
+FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+CORS_ORIGINS=https://your-frontend.vercel.app
+```
+
+> For `FIREBASE_PRIVATE_KEY` on Render, paste the key with real newlines or use `\n` escapes.
+
+5. Deploy. Note your Render URL (e.g. `https://cinegraph-api.onrender.com`).
+6. Free-tier Render services spin down after inactivity — first request after idle may take 30–60s.
+
+### 7B. Deploy the frontend
+
+**Option 1 — Vercel (free, no Firebase Blaze required)**
+
+1. [vercel.com](https://vercel.com) → **Import** your GitHub repo.
+2. Set **Root Directory** to `frontend`.
+3. Add environment variables:
+
+```env
+NEXT_PUBLIC_API_URL=https://cinegraph-api.onrender.com
+NEXT_PUBLIC_DEV_MODE=false
+NEXT_PUBLIC_FIREBASE_API_KEY=...
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=your-project-id
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=...
+NEXT_PUBLIC_FIREBASE_APP_ID=...
+```
+
+4. Deploy. Add your Vercel URL to Firebase **Authorized domains** (Authentication → Settings).
+5. Update backend `CORS_ORIGINS` on Render to include the Vercel URL.
+
+**Option 2 — Firebase App Hosting**
+
+Same as [step 7](#7-deploy-the-frontend-with-firebase-app-hosting) below, but set `NEXT_PUBLIC_API_URL` to your Render URL. Requires upgrading Firebase to the **Blaze** plan (pay-as-you-go; can stay at $0 on low traffic).
+
+### 8B. Verify (Path B)
+
+1. Open your Vercel or App Hosting URL.
+2. Sign in with Firebase Auth.
+3. Import Letterboxd data via **Settings** (embedding step may take several minutes on Gemini free tier).
+4. Test **AI Recommendations**.
+
+---
+
+## Path A: Cloud SQL + Cloud Run (GCP)
 
 ## 5. Set up Cloud SQL (PostgreSQL + pgvector)
 
@@ -231,7 +372,12 @@ docker compose down && docker compose up --build
 
 ## Cost notes
 
-- **Firebase Auth**: free tier covers most small apps.
-- **App Hosting**: pay per use; `minInstances: 0` in `apphosting.yaml` keeps idle cost low.
-- **Cloud Run**: scales to zero; cold starts add ~2–5s latency.
-- **Cloud SQL**: smallest instance is the main fixed cost (~$10–30/mo).
+| Service | Path B (Neon + Render + Vercel) | Path A (GCP) |
+|---------|----------------------------------|--------------|
+| Firebase Auth | Free (Spark plan) | Free (Spark plan) |
+| Database | Neon/Supabase free tier | Cloud SQL ~$10–30/mo |
+| Backend | Render free tier (cold starts) | Cloud Run free tier with Blaze |
+| Frontend | Vercel free tier | App Hosting (Blaze) |
+| Gemini / TMDB | Your API keys | Your API keys |
+
+**Path B** keeps you off Cloud SQL billing entirely. The main trade-offs are Render cold starts on the free tier and running migrations manually against Neon before first deploy.
