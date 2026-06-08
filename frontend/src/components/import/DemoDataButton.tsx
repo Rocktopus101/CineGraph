@@ -38,7 +38,7 @@ export function DemoDataButton({ onLoad, disabled }: Props) {
         </div>
       </div>
       <Button
-        variant="secondary"
+        variant="outline"
         onClick={handleClick}
         disabled={disabled || loading}
         className="w-full sm:w-auto"
