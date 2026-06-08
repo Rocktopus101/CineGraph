@@ -17,6 +17,17 @@ import type {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+if (typeof window !== "undefined") {
+  const onLocalhost =
+    window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+  if (!onLocalhost && API_URL.includes("localhost")) {
+    console.error(
+      "NEXT_PUBLIC_API_URL is missing or still set to localhost. " +
+        "Set it to your Render backend URL in Vercel and redeploy."
+    );
+  }
+}
+
 let authToken: string | null = null;
 
 export function setAuthToken(token: string | null) {
@@ -88,6 +99,7 @@ export const api = {
     form.append("file", file);
     return fetchApi<ImportJob>("/import/letterboxd", { method: "POST", body: form });
   },
+  loadDemoData: () => fetchApi<ImportJob>("/import/demo", { method: "POST" }),
   getImportJobs: () => fetchApi<ImportJob[]>("/import/jobs"),
   getImportJob: (id: number) => fetchApi<ImportJob>(`/import/jobs/${id}`),
 

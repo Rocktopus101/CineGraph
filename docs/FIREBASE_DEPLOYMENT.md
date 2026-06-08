@@ -371,6 +371,9 @@ docker compose down && docker compose up --build
 | `Firebase not configured` on login | Set all `NEXT_PUBLIC_FIREBASE_*` vars and `NEXT_PUBLIC_DEV_MODE=false`. |
 | Backend can't verify tokens | Use `FIREBASE_SERVICE_ACCOUNT_JSON` (full JSON) on Render, or check `FIREBASE_PRIVATE_KEY` has `\n` escapes. |
 | `Failed to initialize a certificate credential` on Render | Paste full service-account JSON into `FIREBASE_SERVICE_ACCOUNT_JSON` instead of splitting the private key. |
+| `POST http://localhost:8000/... net::ERR_CONNECTION_REFUSED` on Vercel | `NEXT_PUBLIC_API_URL` not set at **build** time. Add it in Vercel env vars, then **Redeploy** (not just restart). |
+| CORS blocked from `*.vercel.app` | Set `CORS_ORIGINS` to your production Vercel URL and `CORS_ORIGIN_REGEX=https://.*\.vercel\.app` on Render for preview deploys. |
+| `Permissions-Policy: browsing-topics` warning | Harmless browser/Vercel header warning — ignore it. |
 | Import hangs on embeddings | Normal on Gemini free tier; consider raising Cloud Run timeout to 300s. |
 
 ## Cost notes

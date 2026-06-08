@@ -12,6 +12,7 @@ from app.core.deps import get_current_user
 from app.models.import_job import ImportJob
 from app.models.user import User
 from app.schemas.import_job import ImportJobResponse
+from app.services.demo_data_service import DemoDataService
 from app.services.import_service import ImportService
 
 logger = logging.getLogger(__name__)
@@ -70,6 +71,19 @@ async def import_letterboxd(
 
     asyncio.create_task(_run_import_in_background(job.id, user.id, content, file.filename))
 
+    return ImportJobResponse.model_validate(job)
+
+
+@router.post("/demo", response_model=ImportJobResponse)
+async def load_demo_data(
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Load sample watch history without embedding API calls."""
+    svc = DemoDataService(db)
+    job = await svc.load_for_user(user)
+    await db.commit()
+    await db.refresh(job)
     return ImportJobResponse.model_validate(job)
 
 
