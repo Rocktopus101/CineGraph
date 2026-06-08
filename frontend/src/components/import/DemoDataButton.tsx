@@ -32,8 +32,8 @@ export function DemoDataButton({ onLoad, disabled }: Props) {
         <div className="space-y-1">
           <p className="text-sm font-medium">Explore with sample data</p>
           <p className="text-xs text-muted-foreground">
-            Upload stuck or hitting API limits? Load 20 prebaked films with ratings and reviews —
-            no embedding API calls required.
+            Upload stuck or hitting API limits? This cancels any running import and loads 20
+            prebaked films instantly — no embedding API calls.
           </p>
         </div>
       </div>

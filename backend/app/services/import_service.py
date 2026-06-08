@@ -21,6 +21,14 @@ from app.services.tmdb_service import TmdbService
 
 logger = logging.getLogger(__name__)
 
+ACTIVE_JOB_STATUSES = frozenset(
+    {"pending", "parsing", "enriching", "embedding", "profiling"}
+)
+
+
+class ImportCancelled(Exception):
+    """Raised when a user cancels a running import job."""
+
 
 class ImportService:
     def __init__(self, db: AsyncSession):
@@ -40,6 +48,43 @@ class ImportService:
             job.status = status
         job.stats_json = {"stage": stage, "progress": progress, **extra}
         await self.db.commit()
+        await self._raise_if_cancelled(job.id)
+
+    async def _raise_if_cancelled(self, job_id: int) -> None:
+        result = await self.db.execute(
+            select(ImportJob.status).where(ImportJob.id == job_id)
+        )
+        status = result.scalar_one_or_none()
+        if status == "cancelled":
+            raise ImportCancelled()
+
+    async def cancel_job(self, user_id: int, job_id: int) -> ImportJob | None:
+        result = await self.db.execute(
+            select(ImportJob).where(ImportJob.id == job_id, ImportJob.user_id == user_id)
+        )
+        job = result.scalar_one_or_none()
+        if not job:
+            return None
+        if job.status in ACTIVE_JOB_STATUSES:
+            job.status = "cancelled"
+            job.error = "Cancelled by user"
+            job.completed_at = datetime.now(timezone.utc)
+        return job
+
+    async def cancel_active_jobs(self, user_id: int) -> int:
+        result = await self.db.execute(
+            select(ImportJob).where(
+                ImportJob.user_id == user_id,
+                ImportJob.status.in_(ACTIVE_JOB_STATUSES),
+            )
+        )
+        jobs = list(result.scalars().all())
+        now = datetime.now(timezone.utc)
+        for job in jobs:
+            job.status = "cancelled"
+            job.error = "Cancelled to start a new import"
+            job.completed_at = now
+        return len(jobs)
 
     async def create_job(self, user: User, file_content: bytes, filename: str) -> ImportJob:
         """Create a pending import job and return immediately (processing runs in background)."""
@@ -268,6 +313,8 @@ class ImportService:
                 user_embedded=user_embedded,
             )
             logger.info("Import job %s complete for user %s", job.id, user.id)
+        except ImportCancelled:
+            logger.info("Import job %s cancelled", job.id)
         except Exception as exc:
             logger.exception("Import job %s failed", job.id)
             job.status = "failed"

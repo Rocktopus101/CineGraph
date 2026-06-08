@@ -34,7 +34,11 @@ export function setAuthToken(token: string | null) {
   authToken = token;
 }
 
-async function fetchApi<T>(path: string, options: RequestInit = {}): Promise<T> {
+async function fetchApi<T>(
+  path: string,
+  options: RequestInit = {},
+  timeoutMs = 90_000,
+): Promise<T> {
   const headers: Record<string, string> = {
     ...(options.headers as Record<string, string>),
   };
@@ -45,12 +49,35 @@ async function fetchApi<T>(path: string, options: RequestInit = {}): Promise<T> 
     headers["Authorization"] = `Bearer ${authToken}`;
   }
 
-  const res = await fetch(`${API_URL}${path}`, { ...options, headers });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail || "API error");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(`${API_URL}${path}`, {
+      ...options,
+      headers,
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || "API error");
+    }
+    return res.json();
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(
+        "Request timed out. Render may be waking up — wait 30 seconds and try again.",
+      );
+    }
+    if (error instanceof TypeError) {
+      throw new Error(
+        "Could not reach the backend. Wait for Render to wake up, then try again.",
+      );
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
-  return res.json();
 }
 
 export const api = {
@@ -99,7 +126,14 @@ export const api = {
     form.append("file", file);
     return fetchApi<ImportJob>("/import/letterboxd", { method: "POST", body: form });
   },
-  loadDemoData: () => fetchApi<ImportJob>("/import/demo", { method: "POST" }),
+  loadDemoData: () =>
+    fetchApi<ImportJob>(
+      "/import/demo",
+      { method: "POST", body: JSON.stringify({}) },
+      120_000,
+    ),
+  cancelImportJob: (id: number) =>
+    fetchApi<ImportJob>(`/import/jobs/${id}/cancel`, { method: "POST", body: "{}" }),
   getImportJobs: () => fetchApi<ImportJob[]>("/import/jobs"),
   getImportJob: (id: number) => fetchApi<ImportJob>(`/import/jobs/${id}`),
 

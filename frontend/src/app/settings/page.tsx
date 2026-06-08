@@ -9,6 +9,7 @@ import { LetterboxdUploadDropzone } from "@/components/import/LetterboxdUploadDr
 import { ImportProgressStepper } from "@/components/import/ImportProgressStepper";
 import { DemoDataButton } from "@/components/import/DemoDataButton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 
 export default function SettingsPage() {
   const { user, refreshUser } = useAuth();
@@ -16,7 +17,9 @@ export default function SettingsPage() {
   const [job, setJob] = useState<ImportJob | null>(null);
 
   useEffect(() => {
-    if (!job || job.status === "complete" || job.status === "failed") return;
+    if (!job || job.status === "complete" || job.status === "failed" || job.status === "cancelled") {
+      return;
+    }
     const interval = setInterval(async () => {
       try {
         const updated = await api.getImportJob(job.id);
@@ -80,19 +83,33 @@ export default function SettingsPage() {
                 Import complete. Your watch history and recommendations are updated.
               </p>
             )}
-            {job.error && (
-              <>
-                <p className="text-sm text-red-400">{job.error}</p>
-                <DemoDataButton
-                  onLoad={async () => {
-                    const newJob = await api.loadDemoData();
-                    setJob(newJob);
-                    await refreshUser();
-                  }}
-                />
-              </>
+            {job.status !== "complete" &&
+              job.status !== "failed" &&
+              job.status !== "cancelled" && (
+                <div className="space-y-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      const updated = await api.cancelImportJob(job.id);
+                      setJob(updated);
+                    }}
+                  >
+                    Cancel import
+                  </Button>
+                  <DemoDataButton
+                    onLoad={async () => {
+                      const newJob = await api.loadDemoData();
+                      setJob(newJob);
+                      await refreshUser();
+                    }}
+                  />
+                </div>
+              )}
+            {(job.error || job.status === "cancelled") && job.status !== "complete" && (
+              <p className="text-sm text-red-400">{job.error || "Import cancelled."}</p>
             )}
-            {(job.status === "complete" || job.status === "failed") && (
+            {(job.status === "complete" || job.status === "failed" || job.status === "cancelled") && (
               <button
                 type="button"
                 className="text-sm text-primary underline"
