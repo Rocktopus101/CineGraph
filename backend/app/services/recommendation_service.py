@@ -16,6 +16,7 @@ from app.retrieval.retrieval_service import RetrievalService
 from app.schemas.recommendation import Citation
 from app.services.observability_service import ObservabilityService
 from app.services.tmdb_service import TmdbService
+from app.utils.movie_parse import parse_title_year_from_text
 
 logger = logging.getLogger(__name__)
 
@@ -249,13 +250,12 @@ class RecommendationService:
         titles: list[tuple[str, int | None]] = []
         seen: set[str] = set()
         for line in text.splitlines():
-            match = re.match(r"^\s*\d+\.\s+(.+)$", line.strip())
-            if not match:
+            list_match = re.match(r"^\s*\d+\.\s+(.+)$", line.strip())
+            if not list_match:
                 continue
-            body = re.sub(r"\*+", "", match.group(1)).strip().rstrip(":").strip()
-            year_match = re.search(r"\((\d{4})\)\s*$", body)
-            year = int(year_match.group(1)) if year_match else None
-            title = body[: year_match.start()].strip() if year_match else body
+            title, year = parse_title_year_from_text(list_match.group(1))
+            if len(title) > 80:
+                continue
             if not title or len(title) < 2:
                 continue
             key = title.lower()
@@ -289,6 +289,7 @@ class RecommendationService:
             try:
                 if settings.tmdb_api_key:
                     movie = await self.tmdb_matcher.find_or_create_movie(title, year, None)
+                    movie = await self.tmdb_matcher.enrich_movie(movie)
                 else:
                     movie = await self._find_local_movie(title, year)
                     if not movie:
@@ -300,10 +301,11 @@ class RecommendationService:
                 continue
             if movie.id in seen_movie_ids:
                 continue
+            chip_title = movie.title if len(movie.title) <= 80 else title
             citations.append(
                 Citation(
                     movie_id=movie.id,
-                    title=movie.title,
+                    title=chip_title,
                     rating=None,
                     watched_date=None,
                 )

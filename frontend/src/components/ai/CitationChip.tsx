@@ -13,7 +13,7 @@ export function CitationChip({ citation }: { citation: Citation }) {
       {isRecommendation && (
         <span className="text-[10px] uppercase tracking-wide text-primary/80">Suggested</span>
       )}
-      <span className="font-medium">{citation.title}</span>
+      <span className="font-medium line-clamp-1 max-w-[14rem]">{citation.title}</span>
       {citation.rating != null && (
         <span className="flex items-center gap-0.5 text-primary">
           <Star className="h-3 w-3 fill-primary" />
