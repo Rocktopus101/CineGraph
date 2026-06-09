@@ -2,6 +2,8 @@ import type {
   AIEvent,
   AIQuery,
   Analytics,
+  ChatHistoryDetail,
+  ChatHistoryItem,
   ChatResponse,
   HistoryItem,
   ImportJob,
@@ -58,6 +60,9 @@ async function fetchApi<T>(
       headers,
       signal: controller.signal,
     });
+    if (res.status === 204) {
+      return undefined as T;
+    }
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }));
       const detail = err.detail;
@@ -118,6 +123,15 @@ export const api = {
       },
       60_000,
     ),
+
+  getChatHistory: (limit = 50) =>
+    fetchApi<ChatHistoryItem[]>(`/recommendations/history?limit=${limit}`),
+
+  getChatHistoryDetail: (id: number) =>
+    fetchApi<ChatHistoryDetail>(`/recommendations/history/${id}`),
+
+  deleteChatHistory: (id: number) =>
+    fetchApi<void>(`/recommendations/history/${id}`, { method: "DELETE" }),
 
   getReviews: () => fetchApi<ReviewItem[]>("/reviews/feed"),
   getWatchlist: () => fetchApi<WatchlistItem[]>("/watchlist/"),

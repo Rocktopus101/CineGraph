@@ -31,7 +31,7 @@ services:
         condition: service_healthy
     volumes:
       - ./backend:/app
-      - ./letterboxd-rocktopus101-2026-06-07-04-56-utc:/sample-export:ro
+      - ./sample-export:/sample-export:ro
       - ./scripts:/scripts:ro
 
   frontend:

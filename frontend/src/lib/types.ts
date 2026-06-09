@@ -99,6 +99,21 @@ export interface ChatResponse {
   query_id: number | null;
 }
 
+export interface ChatHistoryItem {
+  id: number;
+  query_text: string;
+  response_preview: string | null;
+  created_at: string;
+}
+
+export interface ChatHistoryDetail {
+  id: number;
+  query_text: string;
+  response_text: string;
+  citations: Citation[];
+  created_at: string;
+}
+
 export interface ImportJob {
   id: number;
   status: string;

@@ -65,8 +65,8 @@ def main():
     parser.add_argument(
         "path",
         nargs="?",
-        default="letterboxd-rocktopus101-2026-06-07-04-56-utc",
-        help="Path to ZIP file or export directory",
+        default="sample-export",
+        help="Path to ZIP file or export directory (default: sample-export/)",
     )
     parser.add_argument("--user", help="Firebase UID (default: DEV_FIREBASE_UID)")
     args = parser.parse_args()

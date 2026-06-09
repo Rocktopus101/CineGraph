@@ -8,3 +8,15 @@ dist/
 *.egg-info/
 .DS_Store
 pgdata/
+
+# Letterboxd exports (personal viewing data / PII)
+letterboxd-*/
+letterboxd-*.zip
+sample-export/
+
+# Firebase local config
+.firebaserc
+
+# IDE / OS
+.idea/
+*.swp
