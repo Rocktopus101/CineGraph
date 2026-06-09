@@ -32,8 +32,9 @@ class Settings(BaseSettings):
     # Gemini (default — free tier at https://aistudio.google.com/apikey)
     gemini_api_key: str = ""
     gemini_embedding_model: str = "gemini-embedding-001"
-    gemini_chat_model: str = "gemini-2.0-flash"
-    gemini_chat_model_fallbacks: str = "gemini-2.0-flash-001,gemini-1.5-flash"
+    # 2.0 Flash is shut down on the free tier (quota limit: 0). Use 2.5 Flash family.
+    gemini_chat_model: str = "gemini-2.5-flash"
+    gemini_chat_model_fallbacks: str = "gemini-2.5-flash-lite,gemini-3.1-flash-lite,gemini-1.5-flash"
 
     # OpenAI (optional)
     openai_api_key: str = ""

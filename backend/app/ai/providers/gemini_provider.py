@@ -7,7 +7,12 @@ from google import genai
 from google.genai import types
 
 from app.ai.providers.base import ChatCompletionResult, LLMProvider, TokenUsage, ToolCallRequest
-from app.ai.rate_limiter import is_transient_llm_error, with_chat_retry, with_embedding_retry
+from app.ai.rate_limiter import (
+    is_rate_limit_error,
+    is_transient_llm_error,
+    with_chat_retry,
+    with_embedding_retry,
+)
 from app.core.config import Settings
 
 logger = logging.getLogger(__name__)
@@ -39,6 +44,21 @@ def _parse_tool_call_entry(tc: dict) -> tuple[str, dict]:
 def _is_model_not_found_error(error: Exception) -> bool:
     msg = str(error).lower()
     return "404" in msg or "not found" in msg or "is not supported" in msg
+
+
+def _should_try_next_chat_model(error: Exception, model: str) -> bool:
+    """Try the next model when this one is missing or has no free-tier quota."""
+    if _is_model_not_found_error(error):
+        return True
+    if not is_rate_limit_error(error):
+        return False
+    msg = str(error).lower()
+    model_key = model.lower().replace("_", "-")
+    if model_key in msg:
+        return True
+    if "free_tier" in msg or "limit: 0" in msg:
+        return True
+    return False
 
 
 class GeminiProvider(LLMProvider):
@@ -321,8 +341,8 @@ class GeminiProvider(LLMProvider):
                     return result
                 except Exception as exc:
                     last_error = exc
-                    if _is_model_not_found_error(exc):
-                        logger.warning("Gemini model %s unavailable: %s", model, exc)
+                    if _should_try_next_chat_model(exc, model):
+                        logger.warning("Gemini model %s unavailable, trying next: %s", model, exc)
                         continue
                     raise
             assert last_error is not None

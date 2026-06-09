@@ -107,6 +107,7 @@ async def with_chat_retry(
     *,
     max_retries: int,
     base_delay_seconds: float,
+    max_delay_seconds: float = 15.0,
 ) -> T:
     last_error: Exception | None = None
 
@@ -119,7 +120,8 @@ async def with_chat_retry(
                 raise
             if attempt == max_retries - 1:
                 break
-            delay = parse_retry_delay(exc) or min(60.0, base_delay_seconds * (2**attempt))
+            raw_delay = parse_retry_delay(exc) or min(60.0, base_delay_seconds * (2**attempt))
+            delay = min(raw_delay, max_delay_seconds)
             logger.warning(
                 "Chat transient error (attempt %d/%d), retrying in %.1fs: %s",
                 attempt + 1,
