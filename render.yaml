@@ -33,3 +33,5 @@ services:
         value: "https://.*\\.vercel\\.app"
       - key: CHAT_USE_AGENT
         value: "false"
+      - key: CHAT_SKIP_RETRIEVAL
+        value: "true"
