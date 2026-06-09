@@ -41,7 +41,13 @@ async def chat(
     else:
         query_id = await obs.start_query(user.id, body.message)
         rec = RecommendationService(db, obs)
-        response, citations = await rec.generate(user.id, body.message)
+        try:
+            response, citations = await rec.generate(
+                user.id, body.message, allow_fallback=False
+            )
+        except Exception as exc:
+            logger.exception("Chat LLM failed for user %s", user.id)
+            raise HTTPException(502, f"AI chat failed: {exc}") from exc
         await obs.complete_query(response)
 
     return ChatResponse(response=response, citations=citations, query_id=query_id)

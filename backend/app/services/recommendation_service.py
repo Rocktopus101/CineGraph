@@ -80,7 +80,12 @@ class RecommendationService:
         return "\n".join(f"- {d.citation_text} (score: {d.score:.2f})" for d in docs)
 
     async def generate(
-        self, user_id: int, query: str, filters: dict | None = None
+        self,
+        user_id: int,
+        query: str,
+        filters: dict | None = None,
+        *,
+        allow_fallback: bool = True,
     ) -> tuple[str, list[Citation]]:
         history, citations = await self._load_history(user_id)
         history_text = "\n".join(
@@ -121,17 +126,20 @@ class RecommendationService:
             )
         except Exception as exc:
             logger.warning("%s chat failed (%s)", self.provider.name, exc)
-            response = self._static_fallback(history, query)
             if self.obs:
                 await self.obs.log_event(
                     "recommendation_fallback",
                     {"reason": str(exc), "citations": [c.model_dump() for c in citations]},
                 )
-            return response, citations
+            if not allow_fallback:
+                raise
+            return self._static_fallback(history, query), citations
 
         text = resp.content or ""
         if not text.strip():
             logger.warning("%s chat returned empty content", self.provider.name)
+            if not allow_fallback:
+                raise RuntimeError(f"{self.provider.name} returned empty content")
             return self._static_fallback(history, query), citations
 
         extracted = self._extract_citations(text, user_id)
