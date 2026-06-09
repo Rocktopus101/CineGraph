@@ -74,6 +74,7 @@ class Settings(BaseSettings):
     chat_skip_retrieval: bool = True
     chat_retrieval_timeout_seconds: float = 4.0
     chat_llm_timeout_seconds: float = 26.0
+    chat_max_output_tokens: int = 2048
 
     # Comma-separated origins for CORS (include production frontend URL)
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
