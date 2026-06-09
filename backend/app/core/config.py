@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     gemini_embedding_model: str = "gemini-embedding-001"
     gemini_chat_model: str = "gemini-2.0-flash"
+    gemini_chat_model_fallbacks: str = "gemini-2.0-flash-001,gemini-1.5-flash"
 
     # OpenAI (optional)
     openai_api_key: str = ""
@@ -64,7 +65,7 @@ class Settings(BaseSettings):
     # Skip per-film user-history embedding API calls during import (uses zero vectors).
     import_embed_user_history: bool = False
 
-    chat_max_retries: int = 1
+    chat_max_retries: int = 2
     chat_retry_base_delay_seconds: float = 1.0
     # Agent tool loops exceed Render's ~30s free-tier limit; use single-pass chat by default.
     chat_use_agent: bool = False
