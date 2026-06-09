@@ -9,11 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.providers import get_llm_provider
 from app.core.config import get_settings
+from app.ingestion.tmdb_matcher import TmdbMatcher
 from app.models.movie import Movie
 from app.models.user_data import UserMovie
 from app.retrieval.retrieval_service import RetrievalService
 from app.schemas.recommendation import Citation
 from app.services.observability_service import ObservabilityService
+from app.services.tmdb_service import TmdbService
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +25,8 @@ class RecommendationService:
         self.db = db
         self.provider = get_llm_provider()
         self.retrieval = RetrievalService(db)
+        self.tmdb = TmdbService(db)
+        self.tmdb_matcher = TmdbMatcher(db, self.tmdb)
         self.obs = obs
 
     async def _load_top_rated(self, user_id: int, limit: int = 10) -> list:
@@ -146,7 +150,8 @@ class RecommendationService:
                             "You are CineGraph, a movie recommendation assistant. Ground answers in the user's "
                             "actual viewing history. Write a complete answer in markdown: explain patterns you see, "
                             "cite specific films they watched by title, and suggest what to watch next with brief reasons. "
-                            "Do not output JSON or code blocks."
+                            "Format each new recommendation as a numbered list item: "
+                            "1. **Movie Title (Year):** reason. Do not output JSON or code blocks."
                         ),
                     },
                     {"role": "user", "content": user_content},
@@ -174,7 +179,7 @@ class RecommendationService:
         clean_text = self._strip_citations_json(text)
         extracted = self._extract_citations(text, user_id)
         validated = await self._validate_citations(extracted, user_id)
-        citations = validated or await self._citations_from_mentions(clean_text, user_id)
+        citations = validated or await self._citations_from_recommendations(clean_text, user_id)
 
         if self.obs:
             await self.obs.log_event(
@@ -239,34 +244,79 @@ class RecommendationService:
             flags=re.DOTALL,
         ).strip()
 
-    async def _citations_from_mentions(self, text: str, user_id: int, limit: int = 5) -> list[Citation]:
-        result = await self.db.execute(
-            select(UserMovie, Movie)
-            .join(Movie, UserMovie.movie_id == Movie.id)
-            .where(UserMovie.user_id == user_id)
-            .order_by(UserMovie.watched_date.desc().nulls_last())
-            .limit(100)
-        )
-        rows = result.all()
-        lower = text.lower()
-        citations: list[Citation] = []
-        seen_ids: set[int] = set()
-        for um, m in sorted(rows, key=lambda row: len(row[1].title), reverse=True):
-            if m.id in seen_ids:
+    def _extract_recommendation_titles(self, text: str, limit: int = 8) -> list[tuple[str, int | None]]:
+        """Parse numbered list items from the model response into (title, year) pairs."""
+        titles: list[tuple[str, int | None]] = []
+        seen: set[str] = set()
+        for line in text.splitlines():
+            match = re.match(r"^\s*\d+\.\s+(.+)$", line.strip())
+            if not match:
                 continue
-            if m.title.lower() in lower:
-                citations.append(
-                    Citation(
-                        movie_id=m.id,
-                        title=m.title,
-                        rating=um.rating,
-                        watched_date=str(um.watched_date) if um.watched_date else None,
-                    )
-                )
-                seen_ids.add(m.id)
-            if len(citations) >= limit:
+            body = re.sub(r"\*+", "", match.group(1)).strip().rstrip(":").strip()
+            year_match = re.search(r"\((\d{4})\)\s*$", body)
+            year = int(year_match.group(1)) if year_match else None
+            title = body[: year_match.start()].strip() if year_match else body
+            if not title or len(title) < 2:
+                continue
+            key = title.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            titles.append((title, year))
+            if len(titles) >= limit:
                 break
+        return titles
+
+    async def _watched_title_keys(self, user_id: int) -> set[str]:
+        result = await self.db.execute(
+            select(Movie.title)
+            .join(UserMovie, UserMovie.movie_id == Movie.id)
+            .where(UserMovie.user_id == user_id)
+        )
+        return {row[0].lower() for row in result.all() if row[0]}
+
+    async def _citations_from_recommendations(
+        self, text: str, user_id: int, limit: int = 6
+    ) -> list[Citation]:
+        settings = get_settings()
+        watched = await self._watched_title_keys(user_id)
+        citations: list[Citation] = []
+        seen_movie_ids: set[int] = set()
+
+        for title, year in self._extract_recommendation_titles(text, limit=limit):
+            if title.lower() in watched:
+                continue
+            try:
+                if settings.tmdb_api_key:
+                    movie = await self.tmdb_matcher.find_or_create_movie(title, year, None)
+                else:
+                    movie = await self._find_local_movie(title, year)
+                    if not movie:
+                        movie = Movie(title=title, year=year)
+                        self.db.add(movie)
+                        await self.db.flush()
+            except Exception as exc:
+                logger.warning("Could not resolve recommendation %s (%s): %s", title, year, exc)
+                continue
+            if movie.id in seen_movie_ids:
+                continue
+            citations.append(
+                Citation(
+                    movie_id=movie.id,
+                    title=movie.title,
+                    rating=None,
+                    watched_date=None,
+                )
+            )
+            seen_movie_ids.add(movie.id)
         return citations
+
+    async def _find_local_movie(self, title: str, year: int | None) -> Movie | None:
+        result = await self.db.execute(select(Movie).where(Movie.title.ilike(title)))
+        for movie in result.scalars():
+            if year is None or movie.year is None or abs(movie.year - year) <= 1:
+                return movie
+        return None
 
     def _extract_citations(self, text: str, user_id: int) -> list[Citation]:
         match = re.search(r'\{["\']citations["\']\s*:\s*\[.*?\]\s*\}', text, re.DOTALL)
