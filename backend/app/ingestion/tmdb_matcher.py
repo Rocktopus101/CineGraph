@@ -89,8 +89,20 @@ class TmdbMatcher:
         movie.vote_average = details.get("vote_average")
         movie.metadata_json = {"genres": genres, "cast": cast, "directors": directors}
 
+    async def _trim_bloated_title(self, movie: Movie) -> None:
+        if not looks_like_bloated_title(movie.title):
+            return
+        search_title, search_year = parse_title_year_from_text(movie.title)
+        if search_title and not looks_like_bloated_title(search_title):
+            movie.title = search_title
+            if search_year:
+                movie.year = search_year
+            await self.db.flush()
+
     async def enrich_movie(self, movie: Movie) -> Movie:
         """Fill poster/overview/metadata from TMDB for stub or corrupted records."""
+        await self._trim_bloated_title(movie)
+
         settings = get_settings()
         if not settings.tmdb_api_key:
             return movie

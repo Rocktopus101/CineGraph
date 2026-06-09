@@ -46,9 +46,21 @@ def _is_model_not_found_error(error: Exception) -> bool:
     return "404" in msg or "not found" in msg or "is not supported" in msg
 
 
+def _is_model_overloaded_error(error: Exception) -> bool:
+    msg = str(error).lower()
+    return (
+        "503" in str(error)
+        or "unavailable" in msg
+        or "high demand" in msg
+        or "overloaded" in msg
+    )
+
+
 def _should_try_next_chat_model(error: Exception, model: str) -> bool:
-    """Try the next model when this one is missing or has no free-tier quota."""
+    """Try the next model when this one is missing, overloaded, or has no free-tier quota."""
     if _is_model_not_found_error(error):
+        return True
+    if _is_model_overloaded_error(error):
         return True
     if not is_rate_limit_error(error):
         return False

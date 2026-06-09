@@ -7,6 +7,8 @@ import { PosterHero } from "@/components/movies/PosterHero";
 import { MovieGrid } from "@/components/movies/MovieGrid";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { letterboxdUrl } from "@/lib/utils";
+import { ExternalLink } from "lucide-react";
 
 export default function MovieDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -35,13 +37,19 @@ export default function MovieDetailPage({ params }: { params: Promise<{ id: stri
   return (
     <div className="space-y-8">
       <PosterHero movie={movie} />
-      <div className="flex gap-3">
+      <div className="flex flex-wrap gap-3">
         {!movie.in_watchlist && (
           <Button onClick={() => watchlistMutation.mutate()} disabled={watchlistMutation.isPending}>
             Add to Watchlist
           </Button>
         )}
         {movie.in_watchlist && <Button variant="outline" disabled>On Watchlist</Button>}
+        <Button variant="outline" asChild>
+          <a href={letterboxdUrl(movie)} target="_blank" rel="noopener noreferrer">
+            View on Letterboxd
+            <ExternalLink className="ml-2 h-4 w-4" />
+          </a>
+        </Button>
       </div>
       {movie.user_review && (
         <div className="rounded-lg border border-border p-4">

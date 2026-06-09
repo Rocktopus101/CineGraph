@@ -16,7 +16,7 @@ from app.retrieval.retrieval_service import RetrievalService
 from app.schemas.recommendation import Citation
 from app.services.observability_service import ObservabilityService
 from app.services.tmdb_service import TmdbService
-from app.utils.movie_parse import parse_title_year_from_text
+from app.utils.movie_parse import chip_display_title, parse_title_year_from_text
 
 logger = logging.getLogger(__name__)
 
@@ -301,11 +301,10 @@ class RecommendationService:
                 continue
             if movie.id in seen_movie_ids:
                 continue
-            chip_title = movie.title if len(movie.title) <= 80 else title
             citations.append(
                 Citation(
                     movie_id=movie.id,
-                    title=chip_title,
+                    title=chip_display_title(movie.title, title),
                     rating=None,
                     watched_date=None,
                 )
