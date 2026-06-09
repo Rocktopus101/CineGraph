@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import re
+from datetime import date, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,25 +25,51 @@ class RecommendationService:
         self.retrieval = RetrievalService(db)
         self.obs = obs
 
-    async def _load_history(self, user_id: int) -> tuple[list, list[Citation]]:
+    async def _load_top_rated(self, user_id: int, limit: int = 10) -> list:
         result = await self.db.execute(
             select(UserMovie, Movie)
             .join(Movie, UserMovie.movie_id == Movie.id)
             .where(UserMovie.user_id == user_id, UserMovie.rating.isnot(None))
             .order_by(UserMovie.rating.desc())
-            .limit(10)
+            .limit(limit)
         )
-        history = result.all()
-        citations = [
-            Citation(
-                movie_id=m.id,
-                title=m.title,
-                rating=um.rating,
-                watched_date=str(um.watched_date) if um.watched_date else None,
+        return result.all()
+
+    async def _load_recent_watches(self, user_id: int, days: int = 31, limit: int = 20) -> list:
+        cutoff = date.today() - timedelta(days=days)
+        result = await self.db.execute(
+            select(UserMovie, Movie)
+            .join(Movie, UserMovie.movie_id == Movie.id)
+            .where(
+                UserMovie.user_id == user_id,
+                UserMovie.watched_date.isnot(None),
+                UserMovie.watched_date >= cutoff,
             )
-            for um, m in history[:3]
-        ]
-        return history, citations
+            .order_by(UserMovie.watched_date.desc())
+            .limit(limit)
+        )
+        return result.all()
+
+    def _format_history_lines(self, rows: list) -> str:
+        return "\n".join(
+            f"- {m.title} ({m.year}): rated {um.rating}, watched {um.watched_date}"
+            for um, m in rows
+        )
+
+    def _history_context_for_query(self, query: str, recent: list, top_rated: list) -> str:
+        lower = query.lower()
+        wants_recent = any(
+            phrase in lower
+            for phrase in ("last month", "recent", "recently", "this month", "past month", "lately")
+        )
+        sections: list[str] = []
+        if recent:
+            sections.append(f"Recent watches (last ~30 days):\n{self._format_history_lines(recent)}")
+        if wants_recent and not recent:
+            sections.append("Recent watches (last ~30 days):\n- (none logged in this period)")
+        if top_rated:
+            sections.append(f"Top-rated overall:\n{self._format_history_lines(top_rated)}")
+        return "\n\n".join(sections)
 
     def _static_fallback(self, history: list, query: str) -> str:
         if not history:
@@ -87,26 +114,27 @@ class RecommendationService:
         *,
         allow_fallback: bool = True,
     ) -> tuple[str, list[Citation]]:
-        history, citations = await self._load_history(user_id)
-        history_text = "\n".join(
-            f"- {m.title} ({m.year}): rated {um.rating}" for um, m in history
-        )
+        settings = get_settings()
+        recent = await self._load_recent_watches(user_id)
+        top_rated = await self._load_top_rated(user_id)
+        history = recent or top_rated
+        history_text = self._history_context_for_query(query, recent, top_rated)
         context = await self._retrieve_context(query, user_id, filters)
 
         if not self.provider.supports_chat:
             response = self._static_fallback(history, query)
             if self.obs:
-                await self.obs.log_event("recommendation", {"citations": [c.model_dump() for c in citations]})
-            return response, citations
+                await self.obs.log_event("recommendation", {"citations": []})
+            return response, []
 
         if self.obs:
             self.obs.start_timer("llm")
 
-        user_content = f"Query: {query}\n\nUser history:\n{history_text}\n\nProvide recommendations with citations."
+        user_content = f"Query: {query}\n\n{history_text}\n\nProvide thoughtful recommendations."
         if context:
             user_content = (
                 f"Query: {query}\n\nRetrieved context:\n{context}\n\n"
-                f"User history:\n{history_text}\n\nProvide recommendations with citations."
+                f"{history_text}\n\nProvide thoughtful recommendations."
             )
 
         try:
@@ -115,38 +143,38 @@ class RecommendationService:
                     {
                         "role": "system",
                         "content": (
-                            "You are a movie recommendation assistant. Ground all recommendations in the user's "
-                            "viewing history. Include a JSON block at the end with citations: "
-                            '{"citations": [{"movie_id": N, "title": "...", "rating": N, "watched_date": "..."}]}'
+                            "You are CineGraph, a movie recommendation assistant. Ground answers in the user's "
+                            "actual viewing history. Write a complete answer in markdown: explain patterns you see, "
+                            "cite specific films they watched by title, and suggest what to watch next with brief reasons. "
+                            "Do not output JSON or code blocks."
                         ),
                     },
                     {"role": "user", "content": user_content},
                 ],
-                max_tokens=800,
+                max_tokens=settings.chat_max_output_tokens,
             )
         except Exception as exc:
             logger.warning("%s chat failed (%s)", self.provider.name, exc)
             if self.obs:
                 await self.obs.log_event(
                     "recommendation_fallback",
-                    {"reason": str(exc), "citations": [c.model_dump() for c in citations]},
+                    {"reason": str(exc), "citations": []},
                 )
             if not allow_fallback:
                 raise
-            return self._static_fallback(history, query), citations
+            return self._static_fallback(history, query), []
 
         text = resp.content or ""
         if not text.strip():
             logger.warning("%s chat returned empty content", self.provider.name)
             if not allow_fallback:
                 raise RuntimeError(f"{self.provider.name} returned empty content")
-            return self._static_fallback(history, query), citations
+            return self._static_fallback(history, query), []
 
+        clean_text = self._strip_citations_json(text)
         extracted = self._extract_citations(text, user_id)
         validated = await self._validate_citations(extracted, user_id)
-        if validated:
-            citations = validated
-        clean_text = re.sub(r'\{["\']citations["\'].*\}', "", text, flags=re.DOTALL).strip()
+        citations = validated or await self._citations_from_mentions(clean_text, user_id)
 
         if self.obs:
             await self.obs.log_event(
@@ -195,6 +223,50 @@ class RecommendationService:
         if self.obs:
             await self.obs.log_event("recommendation_fallback", {"citations": [c.model_dump() for c in citations]})
         return response, citations
+
+    def _strip_citations_json(self, text: str) -> str:
+        """Remove a trailing citations JSON block without touching the main prose."""
+        stripped = re.sub(
+            r'```json\s*\{["\']citations["\'].*?\}\s*```\s*$',
+            "",
+            text,
+            flags=re.DOTALL | re.IGNORECASE,
+        ).strip()
+        return re.sub(
+            r'\{["\']citations["\']\s*:\s*\[.*?\]\s*\}\s*$',
+            "",
+            stripped,
+            flags=re.DOTALL,
+        ).strip()
+
+    async def _citations_from_mentions(self, text: str, user_id: int, limit: int = 5) -> list[Citation]:
+        result = await self.db.execute(
+            select(UserMovie, Movie)
+            .join(Movie, UserMovie.movie_id == Movie.id)
+            .where(UserMovie.user_id == user_id)
+            .order_by(UserMovie.watched_date.desc().nulls_last())
+            .limit(100)
+        )
+        rows = result.all()
+        lower = text.lower()
+        citations: list[Citation] = []
+        seen_ids: set[int] = set()
+        for um, m in sorted(rows, key=lambda row: len(row[1].title), reverse=True):
+            if m.id in seen_ids:
+                continue
+            if m.title.lower() in lower:
+                citations.append(
+                    Citation(
+                        movie_id=m.id,
+                        title=m.title,
+                        rating=um.rating,
+                        watched_date=str(um.watched_date) if um.watched_date else None,
+                    )
+                )
+                seen_ids.add(m.id)
+            if len(citations) >= limit:
+                break
+        return citations
 
     def _extract_citations(self, text: str, user_id: int) -> list[Citation]:
         match = re.search(r'\{["\']citations["\']\s*:\s*\[.*?\]\s*\}', text, re.DOTALL)

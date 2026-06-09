@@ -296,17 +296,61 @@ class GeminiProvider(LLMProvider):
             assistant_message=assistant_message,
         )
 
+    def _thinking_config_for_model(self, model: str) -> types.ThinkingConfig | None:
+        """2.5 Flash spends the output budget on hidden thinking unless disabled."""
+        name = model.lower()
+        if "2.5-pro" in name:
+            return types.ThinkingConfig(thinking_budget=128)
+        if "2.5" in name:
+            return types.ThinkingConfig(thinking_budget=0)
+        return None
+
+    def _build_chat_config(
+        self,
+        model: str,
+        *,
+        max_tokens: int,
+        system_instruction: str | None,
+        tools: list[dict] | None,
+    ) -> types.GenerateContentConfig:
+        kwargs: dict = {
+            "max_output_tokens": max_tokens,
+            "system_instruction": system_instruction,
+        }
+        thinking = self._thinking_config_for_model(model)
+        if thinking is not None:
+            kwargs["thinking_config"] = thinking
+        if tools:
+            kwargs["tools"] = self._openai_tools_to_gemini(tools)
+        return types.GenerateContentConfig(**kwargs)
+
     async def _generate_with_model(
         self,
         model: str,
         contents: list[types.Content],
         config: types.GenerateContentConfig,
     ) -> ChatCompletionResult:
-        resp = await self._client.aio.models.generate_content(
-            model=model,
-            contents=contents,
-            config=config,
-        )
+        try:
+            resp = await self._client.aio.models.generate_content(
+                model=model,
+                contents=contents,
+                config=config,
+            )
+        except Exception as exc:
+            if "thinking" in str(exc).lower() and getattr(config, "thinking_config", None):
+                logger.warning("Retrying %s without thinking_config: %s", model, exc)
+                config = types.GenerateContentConfig(
+                    max_output_tokens=config.max_output_tokens,
+                    system_instruction=config.system_instruction,
+                    tools=config.tools,
+                )
+                resp = await self._client.aio.models.generate_content(
+                    model=model,
+                    contents=contents,
+                    config=config,
+                )
+            else:
+                raise
         return self._parse_generate_response(resp)
 
     async def chat_completion(
@@ -324,16 +368,15 @@ class GeminiProvider(LLMProvider):
         if not contents:
             raise RuntimeError("Gemini chat requires at least one user message")
 
-        config = types.GenerateContentConfig(
-            max_output_tokens=max_tokens,
-            system_instruction=system_instruction,
-        )
-        if tools:
-            config.tools = self._openai_tools_to_gemini(tools)
-
         async def _request() -> ChatCompletionResult:
             last_error: Exception | None = None
             for model in self._chat_models():
+                config = self._build_chat_config(
+                    model,
+                    max_tokens=max_tokens,
+                    system_instruction=system_instruction,
+                    tools=tools,
+                )
                 try:
                     result = await self._generate_with_model(model, contents, config)
                     if model != self.settings.gemini_chat_model:
