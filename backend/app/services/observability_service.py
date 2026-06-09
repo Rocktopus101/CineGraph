@@ -66,6 +66,48 @@ class ObservabilityService:
         )
         return list(result.scalars().all())
 
+    async def get_user_queries(
+        self, user_id: int, *, limit: int = 50, offset: int = 0
+    ) -> list[AIQuery]:
+        result = await self.db.execute(
+            select(AIQuery)
+            .where(AIQuery.user_id == user_id, AIQuery.response_text.isnot(None))
+            .order_by(AIQuery.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
+    async def get_user_query(self, user_id: int, query_id: int) -> AIQuery | None:
+        result = await self.db.execute(
+            select(AIQuery).where(AIQuery.id == query_id, AIQuery.user_id == user_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def get_query_citations(self, query_id: int) -> list[dict]:
+        result = await self.db.execute(
+            select(AIQueryEvent)
+            .where(
+                AIQueryEvent.query_id == query_id,
+                AIQueryEvent.event_type == "recommendation",
+            )
+            .order_by(AIQueryEvent.id.desc())
+            .limit(1)
+        )
+        event = result.scalar_one_or_none()
+        if event and event.payload_json:
+            raw = event.payload_json.get("citations", [])
+            return raw if isinstance(raw, list) else []
+        return []
+
+    async def delete_user_query(self, user_id: int, query_id: int) -> bool:
+        query = await self.get_user_query(user_id, query_id)
+        if not query:
+            return False
+        await self.db.delete(query)
+        await self.db.flush()
+        return True
+
     async def get_query_events(self, query_id: int) -> list[AIQueryEvent]:
         result = await self.db.execute(
             select(AIQueryEvent).where(AIQueryEvent.query_id == query_id)

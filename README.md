@@ -7,7 +7,7 @@ AI-powered movie recommendations built on your Letterboxd viewing history, TMDB 
 - **Frontend**: Next.js 15, TypeScript, Tailwind CSS, shadcn/ui, React Query, Firebase Auth
 - **Backend**: FastAPI, SQLAlchemy, Alembic, Pydantic
 - **Database**: PostgreSQL 16 + pgvector (HNSW indexes)
-- **AI**: Pluggable LLM providers (default: **Gemini** `gemini-embedding-001` + `gemini-2.0-flash`; also supports OpenAI and local fallback)
+- **AI**: Pluggable LLM providers (default: **Gemini** `gemini-embedding-001` + `gemini-2.5-flash`; also supports OpenAI and local fallback)
 - **External**: TMDB API for movie enrichment, Letterboxd ZIP import
 
 ## Quick Start
@@ -47,6 +47,8 @@ docker compose exec backend python /scripts/seed.py
 
 ### 4. Import sample Letterboxd export
 
+Copy your Letterboxd export folder to `sample-export/` (gitignored), then:
+
 ```bash
 docker compose exec backend python /scripts/import_letterboxd.py /sample-export
 ```
@@ -60,7 +62,12 @@ docker compose exec backend python /scripts/import_letterboxd.py /sample-export
 | `EMBEDDING_DIM` | Vector dimension (default `768` for Gemini; use `1536` for OpenAI) |
 | `GEMINI_API_KEY` | Gemini API key — get free key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
 | `GEMINI_EMBEDDING_MODEL` | Default: `gemini-embedding-001` (replaces deprecated `text-embedding-004`) |
-| `GEMINI_CHAT_MODEL` | Default: `gemini-2.0-flash` |
+| `GEMINI_CHAT_MODEL` | Default: `gemini-2.5-flash` |
+| `GEMINI_CHAT_MODEL_FALLBACKS` | Comma-separated fallback models on 429/503 |
+| `CHAT_USE_AGENT` | Tool-calling agent (default `false` on Render free tier) |
+| `CHAT_SKIP_RETRIEVAL` | Skip vector retrieval during chat (default `true`) |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | Full Firebase service account JSON (preferred on Render) |
+| `CORS_ORIGIN_REGEX` | Regex for allowed origins (e.g. `https://.*\.vercel\.app`) |
 | `OPENAI_API_KEY` | OpenAI API key (only if `LLM_PROVIDER=openai`) |
 | `EMBEDDING_MODEL` | OpenAI embedding model (default: `text-embedding-3-small`) |
 | `CHAT_MODEL` | OpenAI chat model (default: `gpt-4o-mini`) |
@@ -86,7 +93,7 @@ docker compose exec backend python /scripts/import_letterboxd.py /sample-export
 | `/movies` | `GET /search`, `GET /{id}`, `GET /{id}/similar` |
 | `/history` | `GET /`, `GET /top-rated` |
 | `/profile` | `GET /taste`, `GET /analytics`, `POST /taste/refresh` |
-| `/recommendations` | `POST /chat`, `POST /generate` |
+| `/recommendations` | `POST /chat`, `POST /generate`, `GET /history`, `GET /history/{id}`, `DELETE /history/{id}` |
 | `/reviews` | `GET /feed` |
 | `/watchlist` | CRUD |
 | `/lists` | `GET /`, `GET /{id}` |
@@ -127,21 +134,31 @@ CineGraph/
 - **Onboarding Wizard**: 6-step flow with export guide linking to [letterboxd.com/user/exportdata/](https://letterboxd.com/user/exportdata/)
 - **Taste Analytics**: Genre/director/decade stats with LLM narrative summary
 - **Synthetic Lists**: Auto-generated taste lists (Highest Rated, Top Genre, Recently Loved, Watch Next)
+- **AI Chat History**: Chats persisted per user in PostgreSQL; browse, reload, and delete past conversations
 - **AI Agent**: 7-tool orchestration with citation enforcement
 - **RAG Retrieval**: Hybrid semantic search with metadata filters and reciprocal rank fusion
 - **Observability**: AI query logging with event timelines (admin page)
 - **Evaluation**: Retrieval quality metrics and citation coverage
 
-## Production Deployment (Firebase)
+## Production Deployment
 
 See **[docs/FIREBASE_DEPLOYMENT.md](docs/FIREBASE_DEPLOYMENT.md)** for step-by-step setup.
 
-**Path B (no Cloud SQL billing)** — recommended for personal projects:
+**Path B (recommended)** — Neon + Render + Vercel:
 
-1. Steps 1–4: Firebase project, Auth, web app config, service account
-2. **Neon** free-tier PostgreSQL + `CREATE EXTENSION vector`
-3. **Render** backend (`render.yaml` in repo root)
-4. **Vercel** frontend (root dir: `frontend`) + Firebase Auth client config
+1. Firebase project, Auth, web app config, service account
+2. **Neon** PostgreSQL + `CREATE EXTENSION vector` + run migrations (`alembic upgrade head`)
+3. **Render** backend from `render.yaml` — set `DATABASE_URL`, `GEMINI_API_KEY`, `TMDB_API_KEY`, `FIREBASE_SERVICE_ACCOUNT_JSON`, `CORS_ORIGINS`
+4. **Vercel** frontend (root dir: `frontend`, `vercel.json` included) — set all `NEXT_PUBLIC_*` vars and redeploy after changes
+5. Firebase Auth → Authorized domains: add your `*.vercel.app` URL
+6. Set `DEV_MODE=false` and `NEXT_PUBLIC_DEV_MODE=false` in production
+
+**Pre-deploy checklist**
+
+- [ ] `TMDB_API_KEY` and `GEMINI_API_KEY` set on Render
+- [ ] `NEXT_PUBLIC_API_URL` points to Render backend (not localhost)
+- [ ] Letterboxd exports stay local — `letterboxd-*/` is gitignored
+- [ ] Place sample import at `sample-export/` (gitignored) for local dev only
 
 **Path A (all GCP):** Cloud SQL + Cloud Run + Firebase App Hosting
 

@@ -10,7 +10,14 @@ from app.core.config import get_settings
 from app.core.deps import get_current_user
 from app.core.database import get_db
 from app.models.user import User
-from app.schemas.recommendation import ChatRequest, ChatResponse, GenerateRequest
+from app.schemas.recommendation import (
+    ChatHistoryDetail,
+    ChatHistoryItem,
+    ChatRequest,
+    ChatResponse,
+    Citation,
+    GenerateRequest,
+)
 from app.services.observability_service import ObservabilityService
 from app.services.recommendation_service import RecommendationService
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -66,6 +73,65 @@ async def chat(
     return ChatResponse(response=response, citations=citations, query_id=query_id)
 
 
+def _preview(text: str | None, max_len: int = 120) -> str | None:
+    if not text:
+        return None
+    one_line = " ".join(text.split())
+    return one_line if len(one_line) <= max_len else f"{one_line[: max_len - 1].rstrip()}…"
+
+
+@router.get("/history", response_model=list[ChatHistoryItem])
+async def chat_history(
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    limit: int = 50,
+    offset: int = 0,
+):
+    obs = ObservabilityService(db)
+    queries = await obs.get_user_queries(user.id, limit=min(limit, 100), offset=offset)
+    return [
+        ChatHistoryItem(
+            id=q.id,
+            query_text=q.query_text,
+            response_preview=_preview(q.response_text),
+            created_at=q.created_at,
+        )
+        for q in queries
+    ]
+
+
+@router.get("/history/{query_id}", response_model=ChatHistoryDetail)
+async def chat_history_detail(
+    query_id: int,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    obs = ObservabilityService(db)
+    query = await obs.get_user_query(user.id, query_id)
+    if not query or not query.response_text:
+        raise HTTPException(404, "Chat not found")
+    raw_citations = await obs.get_query_citations(query_id)
+    citations = [Citation(**c) for c in raw_citations if isinstance(c, dict) and "movie_id" in c]
+    return ChatHistoryDetail(
+        id=query.id,
+        query_text=query.query_text,
+        response_text=query.response_text,
+        citations=citations,
+        created_at=query.created_at,
+    )
+
+
+@router.delete("/history/{query_id}", status_code=204)
+async def delete_chat_history(
+    query_id: int,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    obs = ObservabilityService(db)
+    if not await obs.delete_user_query(user.id, query_id):
+        raise HTTPException(404, "Chat not found")
+
+
 @router.post("/generate", response_model=ChatResponse)
 async def generate(
     body: GenerateRequest,
@@ -73,8 +139,8 @@ async def generate(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     obs = ObservabilityService(db)
-    await obs.start_query(user.id, body.query)
+    query_id = await obs.start_query(user.id, body.query)
     rec = RecommendationService(db, obs)
     response, citations = await rec.generate(user.id, body.query, body.filters)
     await obs.complete_query(response)
-    return ChatResponse(response=response, citations=citations)
+    return ChatResponse(response=response, citations=citations, query_id=query_id)

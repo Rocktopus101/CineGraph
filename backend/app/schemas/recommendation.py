@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel
 
 
@@ -21,3 +23,18 @@ class ChatResponse(BaseModel):
 class GenerateRequest(BaseModel):
     query: str
     filters: dict | None = None
+
+
+class ChatHistoryItem(BaseModel):
+    id: int
+    query_text: str
+    response_preview: str | None
+    created_at: datetime
+
+
+class ChatHistoryDetail(BaseModel):
+    id: int
+    query_text: str
+    response_text: str
+    citations: list[Citation]
+    created_at: datetime
