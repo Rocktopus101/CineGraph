@@ -29,6 +29,16 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_firebase()
+    from app.ai.providers import get_llm_provider
+
+    provider = get_llm_provider()
+    if provider.supports_chat:
+        logger.info("LLM chat ready: provider=%s", provider.name)
+    else:
+        logger.warning(
+            "LLM chat unavailable (provider=%s). Set GEMINI_API_KEY on the backend.",
+            provider.name,
+        )
     yield
 
 
@@ -108,4 +118,11 @@ app.include_router(eval_routes.router)
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    from app.ai.providers import get_llm_provider
+
+    provider = get_llm_provider()
+    return {
+        "status": "ok",
+        "llm_provider": provider.name,
+        "llm_chat_ready": provider.supports_chat,
+    }

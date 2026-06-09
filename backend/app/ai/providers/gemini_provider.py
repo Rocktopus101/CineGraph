@@ -95,8 +95,15 @@ class GeminiProvider(LLMProvider):
         return vectors[0]
 
     async def embed_query(self, text: str) -> list[float]:
-        vectors = await self._call_embed(text, min_delay_seconds=0.0, max_retries=2)
-        return vectors[0]
+        """Single-shot embed for live chat — bypasses import rate limiter."""
+        if not self._client:
+            raise RuntimeError("Gemini provider not configured")
+        resp = await self._client.aio.models.embed_content(
+            model=self.settings.gemini_embedding_model,
+            contents=text,
+            config=self._embed_config(),
+        )
+        return list(resp.embeddings[0].values)
 
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
         if not texts:
@@ -264,14 +271,17 @@ class GeminiProvider(LLMProvider):
                 assistant_message=assistant_message,
             )
 
-        try:
+        async def _attempt() -> ChatCompletionResult:
             return await asyncio.wait_for(
-                with_chat_retry(
-                    _request,
-                    max_retries=self.settings.chat_max_retries,
-                    base_delay_seconds=self.settings.chat_retry_base_delay_seconds,
-                ),
+                _request(),
                 timeout=self.settings.chat_llm_timeout_seconds,
+            )
+
+        try:
+            return await with_chat_retry(
+                _attempt,
+                max_retries=self.settings.chat_max_retries,
+                base_delay_seconds=self.settings.chat_retry_base_delay_seconds,
             )
         except asyncio.TimeoutError:
             logger.warning(

@@ -60,7 +60,14 @@ async function fetchApi<T>(
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(err.detail || "API error");
+      const detail = err.detail;
+      const message =
+        typeof detail === "string"
+          ? detail
+          : Array.isArray(detail)
+            ? detail.map((d: { msg?: string }) => d.msg).filter(Boolean).join(", ")
+            : res.statusText;
+      throw new Error(message || "API error");
     }
     return res.json();
   } catch (error) {
