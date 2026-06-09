@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.movie import Movie
 from app.models.user_data import UserMovie, WatchlistItem
+from app.ingestion.tmdb_matcher import TmdbMatcher
 from app.retrieval.retrieval_service import RetrievalService
 from app.services.tmdb_service import TmdbService
 
@@ -51,7 +52,11 @@ class MovieService:
 
     async def get_detail(self, movie_id: int, user_id: int | None = None) -> Movie | None:
         result = await self.db.execute(select(Movie).where(Movie.id == movie_id))
-        return result.scalar_one_or_none()
+        movie = result.scalar_one_or_none()
+        if not movie:
+            return None
+        matcher = TmdbMatcher(self.db, self.tmdb)
+        return await matcher.enrich_movie(movie)
 
     async def get_user_context(self, movie_id: int, user_id: int) -> dict:
         um_result = await self.db.execute(

@@ -1,9 +1,10 @@
 import Image from "next/image";
-import { posterUrl } from "@/lib/utils";
+import { cleanMovieTitle, posterUrl } from "@/lib/utils";
 import type { MovieDetail } from "@/lib/types";
 import { RatingStars } from "./RatingStars";
 
 export function PosterHero({ movie }: { movie: MovieDetail }) {
+  const title = cleanMovieTitle(movie.title);
   const backdrop = movie.backdrop_path
     ? `https://image.tmdb.org/t/p/w1280${movie.backdrop_path}`
     : null;
@@ -20,13 +21,13 @@ export function PosterHero({ movie }: { movie: MovieDetail }) {
       <div className="relative flex flex-col gap-6 p-6 md:flex-row md:p-10">
         <div className="relative mx-auto h-72 w-48 shrink-0 overflow-hidden rounded-md shadow-2xl md:mx-0">
           {poster ? (
-            <Image src={poster} alt={movie.title} fill className="object-cover" priority />
+            <Image src={poster} alt={title} fill className="object-cover" priority />
           ) : (
-            <div className="flex h-full items-center justify-center bg-muted p-4 text-center">{movie.title}</div>
+            <div className="flex h-full items-center justify-center bg-muted p-4 text-center">{title}</div>
           )}
         </div>
         <div className="flex flex-col justify-end">
-          <h1 className="text-3xl font-bold md:text-4xl">{movie.title}</h1>
+          <h1 className="text-3xl font-bold md:text-4xl">{title}</h1>
           {movie.year && <p className="mt-1 text-muted-foreground">{movie.year}</p>}
           {movie.user_rating != null && (
             <div className="mt-3">

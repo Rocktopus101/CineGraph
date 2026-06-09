@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.ai.agent import AgentService
 from app.ai.providers import get_llm_provider
-from app.ai.rate_limiter import is_rate_limit_error
+from app.ai.rate_limiter import is_rate_limit_error, is_transient_llm_error
 from app.core.config import get_settings
 from app.core.deps import get_current_user
 from app.core.database import get_db
@@ -54,6 +54,11 @@ async def chat(
                     "Gemini free-tier quota exceeded. Wait about a minute and try again, "
                     "or check usage at https://ai.dev/rate-limit. "
                     "Free tier supports Flash models (e.g. gemini-2.5-flash), not deprecated 2.0 models.",
+                ) from exc
+            if is_transient_llm_error(exc):
+                raise HTTPException(
+                    503,
+                    "Gemini is temporarily overloaded. We already tried fallback models — please wait a moment and try again.",
                 ) from exc
             raise HTTPException(502, f"AI chat failed: {exc}") from exc
         await obs.complete_query(response)
